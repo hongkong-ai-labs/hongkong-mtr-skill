@@ -26,11 +26,13 @@ Prerequisites:
 From the repository root:
 
 ```bash
+npx wrangler secret put MTR_MCP_API_KEY   # optional
 npx wrangler deploy
 ```
 
 Cloudflare builds the image, pushes it to the Cloudflare registry, and deploys
-the Worker. The MCP endpoint is:
+the Worker. The Worker passes `MTR_MCP_API_KEY` into the container when the
+secret is set. The MCP endpoint is:
 
 ```text
 https://<worker-name>.<account>.workers.dev/mcp
@@ -43,17 +45,10 @@ claude mcp add --transport http mtr-hk \
   https://<worker-name>.<account>.workers.dev/mcp
 ```
 
-Set a worker secret before exposing the endpoint:
-
-```bash
-npx wrangler secret put MTR_MCP_API_KEY
-```
-
-Then configure the Worker container environment to pass `MTR_MCP_API_KEY`
-through. The endpoint requires `Authorization: Bearer <key>` or
-`X-API-Key: <key>`; `/health` stays public. Without a key the endpoint is
-unauthenticated, so also put Cloudflare Access or OAuth in front of a public
-deployment if you need per-user identity.
+When a key is configured, the endpoint requires
+`Authorization: Bearer <key>` or `X-API-Key: <key>`; `/health` stays public.
+Without a key the endpoint is unauthenticated, so also put Cloudflare Access or
+OAuth in front of a public deployment if you need per-user identity.
 
 ## Local Worker check
 
@@ -61,10 +56,11 @@ deployment if you need per-user identity.
 container locally:
 
 ```bash
-npx wrangler dev
+npx wrangler dev --port 8787
 ```
 
-Then use `http://localhost:8787/mcp` as the MCP URL.
+Then use `http://localhost:8787/mcp` as the Worker MCP URL. Port 8080 is the
+container's internal port and is not exposed directly.
 
 ## Transport
 

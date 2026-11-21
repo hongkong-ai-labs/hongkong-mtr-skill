@@ -111,6 +111,7 @@ mtr-hk next "Tsim Sha Tsui" --line=TWL
 mtr-hk journey Admiralty "Tung Chung"
 mtr-hk ferries "Cheung Chau"
 skills/mtr/scripts/mtr status
+mtr-hk update --check
 ```
 
 Add `--json` to any command for raw structured output. The wrapper looks for `mtr-hk` on `PATH`, then `target/release/mtr-hk`, then `target/debug/mtr-hk`.
