@@ -14,6 +14,8 @@ Requires **Rust 1.89+** (`rustup` recommended).
 
 ```bash
 cargo install --path .
+# or directly from GitHub:
+cargo install --git https://github.com/hongkong-ai-labs/hongkong-mtr-skill --locked
 mtr-hk status
 mtr-hk ferries
 ```
@@ -51,6 +53,7 @@ As an agent skill:
 
 ```bash
 npx skills add hongkong-ai-labs/hongkong-mtr-skill
+npx skills update        # refresh the installed skill later
 ```
 
 Docker, Apple container and a pure Cloudflare Workers (V8 isolate) deployment
@@ -71,6 +74,19 @@ The included `.mcp.json` uses the installed binary:
   }
 }
 ```
+
+Register it with any MCP client:
+
+```bash
+npx add-mcp "$(command -v mtr-hk-mcp)" --name mtr-hk -a claude-code -a codex -a cursor -y
+claude mcp add mtr-hk -- mtr-hk-mcp
+codex mcp add mtr-hk -- mtr-hk-mcp
+```
+
+`add-mcp` detects the client configuration files in the current project; add
+`-g` for a global install. Substitute an absolute path if your client does not
+inherit the shell `PATH`.
+
 
 For Claude Code, Claude Desktop, Cursor or any stdio MCP client, use the same command. If the client does not inherit your shell `PATH`, set `command` to the absolute path, e.g. `/Users/you/.cargo/bin/mtr-hk-mcp`.
 
@@ -255,6 +271,10 @@ Star Ferry, Fortune Ferry, Park Island, Discovery Bay, kaito and cross-boundary 
 - **Bus service status** is surfaced by `mtr_bus_next_trains`: route status code/colour/remarks, refresh time, per-stop suspension flags and `suspendedStopCount`.
 - Historical LateCert records are kept by MTR after service normalises. They are marked `record` and are **not** treated as current disruptions; the live status feed is authoritative.
 
+`mtr-hk update` detects whether the binary came from cargo, the release
+installer, a source checkout or Homebrew, and updates with that same
+method. `mtr-hk update --check` only reports.
+
 ## CLI
 
 ```bash
@@ -414,6 +434,12 @@ python3 scripts/mcp_smoke.py
 MTR_HTTP_ADDR=127.0.0.1:8080 ./target/release/mtr-hk-mcp-http &
 python3 scripts/mcp_http_smoke.py
 ```
+
+`rust-toolchain.toml` pins the stable toolchain with `rustfmt` and
+`clippy`, so `rustup` sets contributors up automatically. `just doc`
+builds the API documentation. See `CONTRIBUTING.md` for the full check
+list and the signed-commit requirement.
+
 
 `cargo test` is offline and covers CSV/HTML/network canonicalization/fares/routes/journey legs/status severity/ferry classification. The smoke scripts need network access.
 
