@@ -82,8 +82,8 @@ claude mcp add --transport http mtr-hk \
 
 ## Authentication
 
-`MTR_MCP_API_KEY` is optional. When it is set to a non-empty value, `/mcp`
-requires either:
+`MTR_MCP_API_KEY` is optional; `MTR_API_KEY` and `MTR_AUTH_TOKEN` are accepted
+aliases. When one is set to a non-empty value, `/mcp` requires either:
 
 ```text
 Authorization: Bearer <key>

@@ -520,13 +520,13 @@ fn tool_error(message: String) -> Value {
 }
 
 fn authorized(req: &Request, env: &Env) -> bool {
-    let Ok(expected) = env.var("MTR_MCP_API_KEY") else {
+    let expected = ["MTR_MCP_API_KEY", "MTR_API_KEY", "MTR_AUTH_TOKEN"]
+        .iter()
+        .find_map(|name| env.var(name).ok().map(|value| value.to_string()))
+        .filter(|value| !value.trim().is_empty());
+    let Some(expected) = expected else {
         return true;
     };
-    let expected = expected.to_string();
-    if expected.trim().is_empty() {
-        return true;
-    }
     let bearer = req
         .headers()
         .get("Authorization")
