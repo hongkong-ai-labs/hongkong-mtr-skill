@@ -24,11 +24,12 @@ From the repository root:
 cargo install --path .
 ```
 
-This installs two binaries into `~/.cargo/bin`:
+This installs three binaries into `~/.cargo/bin`:
 
 ```bash
-mtr-hk-mcp   # MCP stdio server
-mtr-hk       # human/JSON CLI
+mtr-hk-mcp        # MCP stdio server
+mtr-hk-mcp-http   # MCP Streamable HTTP/SSE server
+mtr-hk            # human/JSON CLI
 ```
 
 Verify:
@@ -69,6 +70,25 @@ Use the installed binary in Claude Code, Claude Desktop, Cursor or any stdio MCP
 ```
 
 The repository's `.mcp.json` already uses this command. After `cargo install --path .`, approve or restart the server in your client. If your client does not inherit your shell `PATH`, use the absolute path, e.g. `"command": "/Users/you/.cargo/bin/mtr-hk-mcp"`.
+
+### Remote HTTP/SSE MCP
+
+For a remote or container deployment, run:
+
+```bash
+MTR_HTTP_ADDR=0.0.0.0:8080 mtr-hk-mcp-http
+```
+
+and point an HTTP MCP client at `http://localhost:8080/mcp`. The endpoint
+supports Streamable HTTP and SSE-framed responses. Set an optional static key
+with `MTR_MCP_API_KEY` (aliases `MTR_API_KEY`, `MTR_AUTH_TOKEN`) or `--api-key`;
+requests then need `Authorization: Bearer <key>` or `X-API-Key: <key>`, while
+`/health` stays public. Without a key there is no authentication, so do not
+expose it directly to the public internet.
+
+The repository also contains a `Dockerfile`, `compose.yaml`, and a Cloudflare
+Worker + Container deployment in `cloudflare/`. See `README.md` for container
+commands and the pure-WASM limitation.
 
 ### Install the agent skill
 

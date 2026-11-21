@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::csvutil::{num, parse_csv_objects, text};
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{BusData, BusFare, BusFareSet, BusRouteVariant, BusStop};
 
 pub fn build_bus_data(routes_csv: &str, stops_csv: &str, fares_csv: &str) -> Result<BusData> {
@@ -106,8 +106,8 @@ pub fn build_bus_data(routes_csv: &str, stops_csv: &str, fares_csv: &str) -> Res
     })
 }
 
-pub async fn load_bus(http: &HttpClient, config: &Config) -> Result<BusData> {
-    let (routes, stops, fares) = tokio::join!(
+pub async fn load_bus(http: &impl HttpBackend, config: &Config) -> Result<BusData> {
+    let (routes, stops, fares) = futures::join!(
         http.get_text(&config.datasets.bus_routes, &[]),
         http.get_text(&config.datasets.bus_stops, &[]),
         http.get_text(&config.datasets.bus_fares, &[]),

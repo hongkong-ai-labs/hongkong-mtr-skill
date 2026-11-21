@@ -11,6 +11,7 @@ import urllib.request
 
 URL = os.environ.get("MCP_URL", "http://127.0.0.1:8080/mcp")
 HEALTH_URL = os.environ.get("MCP_HEALTH_URL", URL.removesuffix("/mcp") + "/health")
+API_KEY = os.environ.get("MCP_API_KEY") or os.environ.get("MTR_MCP_API_KEY")
 
 
 def request(url: str, payload: dict, session_id: str | None = None) -> tuple[dict | None, str | None]:
@@ -20,6 +21,8 @@ def request(url: str, payload: dict, session_id: str | None = None) -> tuple[dic
     }
     if session_id:
         headers["Mcp-Session-Id"] = session_id
+    if API_KEY:
+        headers["Authorization"] = f"Bearer {API_KEY}"
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),

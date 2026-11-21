@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::config::Config;
 use crate::csvutil::{num, parse_csv_objects, text};
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{LrRoute, LrStop};
 
 #[derive(Debug, Clone)]
@@ -96,7 +96,7 @@ pub fn build_light_rail_data(csv: &str) -> Result<LightRailData> {
     })
 }
 
-pub async fn load_light_rail(http: &HttpClient, config: &Config) -> Result<LightRailData> {
+pub async fn load_light_rail(http: &impl HttpBackend, config: &Config) -> Result<LightRailData> {
     let csv = http
         .get_text(&config.datasets.light_rail_routes_and_stops, &[])
         .await?;
@@ -225,7 +225,7 @@ pub fn build_light_rail_fares(csv: &str) -> Result<LightRailFareMatrix> {
 }
 
 pub async fn load_light_rail_fares(
-    http: &HttpClient,
+    http: &impl HttpBackend,
     config: &Config,
 ) -> Result<LightRailFareMatrix> {
     let csv = http

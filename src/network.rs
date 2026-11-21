@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow, bail};
 use crate::config::Config;
 use crate::constants::{KNOWN_LINES, known_line};
 use crate::csvutil::{parse_csv_objects, text};
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{
     Coordinates, LineRef, Network, RailLine, RailStation, RawStation, RawStationResponse,
     StationRecord, StationSummary,
@@ -237,7 +237,7 @@ pub fn build_network_from_csv(csv: &str) -> Result<Network> {
     Ok(index_network(stations, lines, aliases))
 }
 
-pub async fn load_network(http: &HttpClient, config: &Config) -> Result<Network> {
+pub async fn load_network(http: &impl HttpBackend, config: &Config) -> Result<Network> {
     let raw = http
         .get_json::<RawStationResponse>(
             &config.endpoints.stations_api,

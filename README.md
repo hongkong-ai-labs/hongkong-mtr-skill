@@ -6,7 +6,7 @@ A comprehensive Hong Kong transport integration for AI agents, written in Rust:
 - **Agent skill** (`skills/mtr/SKILL.md`) that teaches an agent when and how to use each tool, with a CLI fallback.
 - **CLI** sharing the same service layer for scripting and manual checks.
 
-MTR data comes from MTR's public open data plus the traffic-news and trip-planner endpoints used by MTR's own website/app. Ferry route/fare data comes from the Transport Department; live ferry ETAs come from HKKF and Sun Ferry. No browser automation, no login, no API key of your own required.
+MTR data comes from MTR's public open data plus the traffic-news and trip-planner endpoints used by MTR's own website/app. Ferry route/fare data comes from the Transport Department; live ferry ETAs come from HKKF and Sun Ferry. No browser automation, no login and no data API key are required; the HTTP MCP transport can optionally require a static API key.
 
 ## Quick start
 
@@ -33,10 +33,29 @@ export PATH="$HOME/.cargo/bin:$PATH"
 For development without installing:
 
 ```bash
-cargo build --release
+cargo build --release --bins
 ./target/release/mtr-hk status
 ./target/release/mtr-hk-mcp
 ```
+
+### Other install routes
+
+Prebuilt binaries for macOS (Intel or Apple silicon) and Linux (x86_64 or
+aarch64, static musl) are checksum-verified by the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hongkong-ai-labs/hongkong-mtr-skill/main/scripts/install.sh | sh
+```
+
+As an agent skill:
+
+```bash
+npx skills add hongkong-ai-labs/hongkong-mtr-skill
+```
+
+Docker, Apple container and Cloudflare deployment are described below. A pure
+WASM Worker is not provided because the server needs TCP/TLS, a Tokio runtime
+and bundled data parsing.
 
 ### Register the MCP server
 
@@ -60,14 +79,14 @@ For Claude Code, Claude Desktop, Cursor or any stdio MCP client, use the same co
 The HTTP binary exposes the same 15 tools over Streamable HTTP at `/mcp`, with a `/health` endpoint:
 
 ```bash
-MTR_HTTP_ADDR=0.0.0.0:8080 mtr-hk-mcp-http
+MTR_HTTP_ADDR=0.0.0.0:8080 MTR_MCP_API_KEY="$SECRET" mtr-hk-mcp-http
 ```
 
 ```bash
 claude mcp add --transport http mtr-hk http://localhost:8080/mcp
 ```
 
-The `/mcp` endpoint returns JSON or SSE-framed responses depending on the client. There is no built-in authentication; do not expose it directly to the public internet.
+The `/mcp` endpoint returns JSON or SSE-framed responses depending on the client. Set `MTR_MCP_API_KEY` (or `MTR_API_KEY` / `MTR_AUTH_TOKEN`) to require `Authorization: Bearer <key>` or `X-API-Key: <key>`; `/health` stays public. Without a key there is no authentication, so do not expose it directly to the public internet.
 
 ### Containers
 
@@ -105,6 +124,7 @@ The image defaults to the HTTP server on port 8080. It runs as a non-root user a
 The repository includes a Cloudflare Worker front door in `cloudflare/` and a root `wrangler.jsonc`. Cloudflare runs the Rust HTTP MCP server in a Cloudflare Container and exposes it at `/mcp`:
 
 ```bash
+npx wrangler secret put MTR_MCP_API_KEY   # optional
 npx wrangler deploy
 ```
 
@@ -314,13 +334,26 @@ scripts/
 
 Caching: static datasets 6 hours, status 20 seconds, alerts 60 seconds, journey plans 60 seconds. Ferry routes/fares 6 hours. Next-train/LR/bus and ferry ETA predictions are not cached. Concurrent identical loads are de-duplicated.
 
+## Releasing
+
+CI runs formatting, clippy with warnings as errors, tests, a release build of all
+three binaries, and validates both `SKILL.md` files plus the shell scripts.
+Dependabot proposes weekly Cargo and GitHub Actions updates, and the audit
+workflow checks the lockfile against the RustSec advisory database.
+
+`just release 1.0.0` creates and pushes the annotated tag `v1.0.0`; the release
+workflow checks it against `Cargo.toml` and `CHANGELOG.md`, builds four targets,
+smoke-tests native binaries and publishes one tarball per target containing
+`mtr-hk`, `mtr-hk-mcp`, `mtr-hk-mcp-http` and `LICENSE`, plus `SHA256SUMS`.
+`scripts/install.sh` verifies the checksum and installs all three binaries, with
+a `cargo build --release --locked --bins` fallback.
+
 ## Development
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo build --release
+just                 # fmt check, clippy with -D warnings, tests
+just skill-check     # validate both SKILL.md files and shell syntax
+cargo build --release --locked --bins
 scripts/smoke.sh
 python3 scripts/mcp_smoke.py
 MTR_HTTP_ADDR=127.0.0.1:8080 ./target/release/mtr-hk-mcp-http &
@@ -342,7 +375,7 @@ python3 scripts/mcp_http_smoke.py
 - **Ferry full fares** are the published adult single fare from TD; concessions, monthly passes and resident fares are not exhaustive.
 - **Kaito/water-taxi/cross-boundary** services can be seasonal, bookable or subject to immigration/terminal rules.
 - **Cloudflare deployment is container-backed, not pure WASM.** Wrangler needs Docker locally to build the image, and Cloudflare Containers must be enabled on the account. A V8-isolate-only Worker would require a separate rewritten HTTP/tool layer.
-- **No built-in remote authentication.** Put Cloudflare Access, OAuth or another auth layer in front of a public `/mcp` endpoint.
+- **Remote authentication is a single static API key.** Set `MTR_MCP_API_KEY` to protect `/mcp`; put Cloudflare Access or OAuth in front of a public deployment if you need per-user identity.
 - **Traditional/Simplified Chinese** matching is exact for Chinese names; use `mtr_stations` if a name variant is not found.
 
 ## License

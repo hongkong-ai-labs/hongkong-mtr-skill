@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod app;
 pub mod bus;
 pub mod cache;
+#[cfg(feature = "native")]
 pub mod cli;
 pub mod config;
 pub mod constants;
@@ -15,6 +16,7 @@ pub mod light_rail;
 pub mod model;
 pub mod network;
 pub mod next_train;
+#[cfg(feature = "native")]
 pub mod server;
 pub mod services;
 pub mod status;

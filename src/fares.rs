@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::config::Config;
 use crate::csvutil::{num, parse_csv_objects, text};
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,7 +75,7 @@ pub fn build_rail_fare_matrix(csv: &str) -> Result<RailFareMatrix> {
     Ok(matrix)
 }
 
-pub async fn load_rail_fares(http: &HttpClient, config: &Config) -> Result<RailFareMatrix> {
+pub async fn load_rail_fares(http: &impl HttpBackend, config: &Config) -> Result<RailFareMatrix> {
     let csv = http.get_text(&config.datasets.lines_fares, &[]).await?;
     build_rail_fare_matrix(&csv)
 }

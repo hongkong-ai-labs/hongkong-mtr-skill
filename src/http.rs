@@ -1,8 +1,6 @@
-use std::time::Duration;
-
-use reqwest::StatusCode;
-use serde::Serialize;
+use async_trait::async_trait;
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,12 +11,8 @@ pub enum HttpError {
         body: String,
         url: String,
     },
-    #[error("Could not reach MTR upstream ({url}): {source}")]
-    Request {
-        url: String,
-        #[source]
-        source: reqwest::Error,
-    },
+    #[error("Could not reach MTR upstream ({url}): {detail}")]
+    Request { url: String, detail: String },
     #[error("MTR upstream returned invalid JSON ({url}): {source}")]
     Json {
         url: String,
@@ -28,7 +22,7 @@ pub enum HttpError {
 }
 
 impl HttpError {
-    fn retriable(&self) -> bool {
+    pub fn retriable(&self) -> bool {
         match self {
             Self::Status { status, .. } => *status == 429 || *status >= 500,
             Self::Request { .. } => true,
@@ -37,14 +31,59 @@ impl HttpError {
     }
 }
 
+/// HTTP operations needed by the data loaders. Native builds use reqwest;
+/// Cloudflare Workers use the Workers `fetch` API.
+#[async_trait]
+pub trait HttpBackend: Clone + Send + Sync + 'static {
+    async fn get_text(&self, url: &str, headers: &[(&str, &str)]) -> Result<String, HttpError>;
+
+    async fn post_text(
+        &self,
+        url: &str,
+        body: &Value,
+        headers: &[(&str, &str)],
+    ) -> Result<String, HttpError>;
+
+    async fn get_json<T: DeserializeOwned + Send>(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<T, HttpError> {
+        let text = self.get_text(url, headers).await?;
+        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|source| {
+            HttpError::Json {
+                url: url.to_string(),
+                source,
+            }
+        })
+    }
+
+    async fn post_json<T: DeserializeOwned + Send>(
+        &self,
+        url: &str,
+        body: &Value,
+        headers: &[(&str, &str)],
+    ) -> Result<T, HttpError> {
+        let text = self.post_text(url, body, headers).await?;
+        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|source| {
+            HttpError::Json {
+                url: url.to_string(),
+                source,
+            }
+        })
+    }
+}
+
+#[cfg(feature = "native")]
 #[derive(Clone)]
 pub struct HttpClient {
     client: reqwest::Client,
     user_agent: String,
 }
 
+#[cfg(feature = "native")]
 impl HttpClient {
-    pub fn new(timeout: Duration, user_agent: String) -> anyhow::Result<Self> {
+    pub fn new(timeout: std::time::Duration, user_agent: String) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .user_agent(&user_agent)
@@ -57,7 +96,7 @@ impl HttpClient {
         method: reqwest::Method,
         url: &str,
         headers: &[(&str, &str)],
-        body: Option<serde_json::Value>,
+        body: Option<&Value>,
     ) -> Result<String, HttpError> {
         let mut last_error = None;
 
@@ -70,7 +109,7 @@ impl HttpClient {
             for (name, value) in headers {
                 request = request.header(*name, *value);
             }
-            if let Some(body) = &body {
+            if let Some(body) = body {
                 request = request.json(body);
             }
 
@@ -80,7 +119,7 @@ impl HttpClient {
                     if status.is_success() {
                         response.text().await.map_err(|source| HttpError::Request {
                             url: url.to_string(),
-                            source,
+                            detail: source.to_string(),
                         })
                     } else {
                         let snippet = response
@@ -104,7 +143,7 @@ impl HttpClient {
                 }
                 Err(source) => Err(HttpError::Request {
                     url: url.to_string(),
-                    source,
+                    detail: source.to_string(),
                 }),
             };
 
@@ -116,55 +155,33 @@ impl HttpClient {
                     if !retriable || attempt == 1 {
                         break;
                     }
-                    tokio::time::sleep(Duration::from_millis(250 * (attempt as u64 + 1))).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        250 * (attempt as u64 + 1),
+                    ))
+                    .await;
                 }
             }
         }
 
         Err(last_error.expect("at least one request attempt"))
     }
+}
 
-    pub async fn get_text(&self, url: &str, headers: &[(&str, &str)]) -> Result<String, HttpError> {
+#[cfg(feature = "native")]
+#[async_trait]
+impl HttpBackend for HttpClient {
+    async fn get_text(&self, url: &str, headers: &[(&str, &str)]) -> Result<String, HttpError> {
         self.request_text(reqwest::Method::GET, url, headers, None)
             .await
     }
 
-    pub async fn get_json<T: DeserializeOwned>(
+    async fn post_text(
         &self,
         url: &str,
+        body: &Value,
         headers: &[(&str, &str)],
-    ) -> Result<T, HttpError> {
-        let text = self.get_text(url, headers).await?;
-        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|source| {
-            HttpError::Json {
-                url: url.to_string(),
-                source,
-            }
-        })
-    }
-
-    pub async fn post_json<B: Serialize, T: DeserializeOwned>(
-        &self,
-        url: &str,
-        body: &B,
-        headers: &[(&str, &str)],
-    ) -> Result<T, HttpError> {
-        let value = serde_json::to_value(body).map_err(|source| HttpError::Json {
-            url: url.to_string(),
-            source,
-        })?;
-        let text = self
-            .request_text(reqwest::Method::POST, url, headers, Some(value))
-            .await?;
-        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|source| {
-            HttpError::Json {
-                url: url.to_string(),
-                source,
-            }
-        })
-    }
-
-    pub fn status_is_success(status: StatusCode) -> bool {
-        status.is_success()
+    ) -> Result<String, HttpError> {
+        self.request_text(reqwest::Method::POST, url, headers, Some(body))
+            .await
     }
 }

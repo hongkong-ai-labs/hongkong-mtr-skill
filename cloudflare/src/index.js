@@ -41,6 +41,9 @@ export class MtrContainer extends DurableObject {
         enableInternet: true,
         env: {
           MTR_HTTP_ADDR: `0.0.0.0:${PORT}`,
+          ...(this.env.MTR_MCP_API_KEY
+            ? { MTR_MCP_API_KEY: this.env.MTR_MCP_API_KEY }
+            : {}),
         },
       });
     }

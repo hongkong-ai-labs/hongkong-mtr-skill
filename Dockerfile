@@ -18,6 +18,7 @@ COPY --from=builder /app/target/release/mtr-hk-mcp /usr/local/bin/mtr-hk-mcp
 COPY --from=builder /app/target/release/mtr-hk-mcp-http /usr/local/bin/mtr-hk-mcp-http
 
 ENV MTR_HTTP_ADDR=0.0.0.0:8080
+# Set MTR_MCP_API_KEY to require a bearer token / X-API-Key on /mcp.
 EXPOSE 8080
 
 USER mtr

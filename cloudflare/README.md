@@ -43,8 +43,17 @@ claude mcp add --transport http mtr-hk \
   https://<worker-name>.<account>.workers.dev/mcp
 ```
 
-The endpoint is unauthenticated by default. Put Cloudflare Access, OAuth, or a
-bearer-token check in front of it before exposing it publicly.
+Set a worker secret before exposing the endpoint:
+
+```bash
+npx wrangler secret put MTR_MCP_API_KEY
+```
+
+Then configure the Worker container environment to pass `MTR_MCP_API_KEY`
+through. The endpoint requires `Authorization: Bearer <key>` or
+`X-API-Key: <key>`; `/health` stays public. Without a key the endpoint is
+unauthenticated, so also put Cloudflare Access or OAuth in front of a public
+deployment if you need per-user identity.
 
 ## Local Worker check
 

@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::app::App;
 use crate::constants::is_next_train_line;
+use crate::http::HttpBackend;
 use crate::model::{
     LineRefFull, NextTrain, NextTrainDirection, NextTrainResult, StationNextTrains, StationRef,
     TrainWarning,
@@ -74,7 +75,7 @@ fn normalize_train(network: &crate::model::Network, train: &RawTrain) -> NextTra
 }
 
 async fn fetch_line_schedule(
-    app: &App,
+    app: &App<impl HttpBackend>,
     line_code: &str,
     station_code: &str,
 ) -> Result<RawSchedule> {
@@ -101,7 +102,7 @@ fn urlencoding(value: &str) -> String {
 }
 
 pub async fn get_next_trains(
-    app: &App,
+    app: &App<impl HttpBackend>,
     station_query: &str,
     line_query: Option<&str>,
     direction_filter: Option<&str>,

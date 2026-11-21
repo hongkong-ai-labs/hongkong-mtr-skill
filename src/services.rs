@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use crate::app::App;
 use crate::bus::{bus_fare_for_route, direction_description, find_bus_routes, find_bus_stops};
 use crate::fares::fare_key;
+use crate::http::HttpBackend;
 use crate::light_rail::{find_light_rail_stops, resolve_lr_stop};
 use crate::model::{
     BusArrival, BusEta, BusNextResult, BusServiceStatus, BusStop, LrNextResult, LrPlatform,
@@ -17,7 +18,7 @@ use crate::network::{line_codes_for_station, resolve_station, station_record};
 use crate::status::line_metadata_for_network;
 use crate::text::{first_number, html_to_text};
 
-pub async fn search_stations(app: &App, query: &str, limit: u8) -> Result<Value> {
+pub async fn search_stations(app: &App<impl HttpBackend>, query: &str, limit: u8) -> Result<Value> {
     let network = app.network().await?;
     let matches: Vec<Value> = crate::network::find_stations(&network, query)
         .into_iter()
@@ -31,7 +32,7 @@ pub async fn search_stations(app: &App, query: &str, limit: u8) -> Result<Value>
     }))
 }
 
-pub async fn list_lines(app: &App, include_stations: bool) -> Result<Value> {
+pub async fn list_lines(app: &App<impl HttpBackend>, include_stations: bool) -> Result<Value> {
     let network = app.network().await?;
     let light_rail = app.light_rail().await?;
     let metadata = line_metadata_for_network(app, &network).await?;
@@ -90,7 +91,10 @@ pub async fn list_lines(app: &App, include_stations: bool) -> Result<Value> {
     }))
 }
 
-pub async fn get_station_facilities(app: &App, station_query: &str) -> Result<Value> {
+pub async fn get_station_facilities(
+    app: &App<impl HttpBackend>,
+    station_query: &str,
+) -> Result<Value> {
     let network = app.network().await?;
     let station = resolve_station(&network, station_query)?;
     let facilities = app.facilities().await?;
@@ -100,7 +104,11 @@ pub async fn get_station_facilities(app: &App, station_query: &str) -> Result<Va
     Ok(serde_json::to_value(result)?)
 }
 
-pub async fn get_rail_fares(app: &App, from_query: &str, to_query: &str) -> Result<Value> {
+pub async fn get_rail_fares(
+    app: &App<impl HttpBackend>,
+    from_query: &str,
+    to_query: &str,
+) -> Result<Value> {
     let network = app.network().await?;
     let from = resolve_station(&network, from_query)?;
     let to = resolve_station(&network, to_query)?;
@@ -166,7 +174,11 @@ pub async fn get_rail_fares(app: &App, from_query: &str, to_query: &str) -> Resu
     }))
 }
 
-pub async fn get_light_rail_fares(app: &App, from_query: &str, to_query: &str) -> Result<Value> {
+pub async fn get_light_rail_fares(
+    app: &App<impl HttpBackend>,
+    from_query: &str,
+    to_query: &str,
+) -> Result<Value> {
     let data = app.light_rail().await?;
     let from = resolve_lr_stop(&data, from_query)?;
     let to = resolve_lr_stop(&data, to_query)?;
@@ -239,7 +251,7 @@ struct RawLrResponse {
 }
 
 pub async fn get_light_rail_next_trains(
-    app: &App,
+    app: &App<impl HttpBackend>,
     stop_query: &str,
     route_filter: Option<&str>,
 ) -> Result<Value> {
@@ -405,7 +417,10 @@ fn route_detail(route: &LrRoute) -> Value {
     })
 }
 
-pub async fn get_light_rail_routes(app: &App, query: Option<&str>) -> Result<Value> {
+pub async fn get_light_rail_routes(
+    app: &App<impl HttpBackend>,
+    query: Option<&str>,
+) -> Result<Value> {
     let data = app.light_rail().await?;
     let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) else {
         let mut routes: Vec<Value> = data
@@ -526,7 +541,10 @@ struct RawBusResponse {
     footer_remarks: Option<String>,
 }
 
-async fn fetch_route_schedule(app: &App, route_name: &str) -> Result<RawBusResponse> {
+async fn fetch_route_schedule(
+    app: &App<impl HttpBackend>,
+    route_name: &str,
+) -> Result<RawBusResponse> {
     let body = json!({ "language": "en", "routeName": route_name });
     Ok(app
         .http
@@ -539,7 +557,7 @@ async fn fetch_route_schedule(app: &App, route_name: &str) -> Result<RawBusRespo
 }
 
 pub async fn get_bus_next_trains(
-    app: &App,
+    app: &App<impl HttpBackend>,
     route_query: &str,
     stop_query: Option<&str>,
 ) -> Result<Value> {
@@ -786,7 +804,7 @@ fn bus_route_details(
 }
 
 pub async fn get_bus_routes(
-    app: &App,
+    app: &App<impl HttpBackend>,
     query: Option<&str>,
     stop_filter: Option<&str>,
 ) -> Result<Value> {

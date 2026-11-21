@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow, bail};
 use serde::Deserialize;
 
 use crate::app::App;
+use crate::http::HttpBackend;
 use crate::model::{
     JourneyFares, JourneyLeg, JourneyPathStep, JourneyResult, JourneyRoute, Network,
     StationSummary, TrainWindow,
@@ -324,7 +325,7 @@ fn train_window(raw: Option<RawTrainWindow>) -> Option<TrainWindow> {
 }
 
 pub async fn plan_journey(
-    app: &App,
+    app: &App<impl HttpBackend>,
     from_query: &str,
     to_query: &str,
     max_routes: Option<u8>,

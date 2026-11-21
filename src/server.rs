@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use tower_http::cors::CorsLayer;
 
 use crate::app::App;
+use crate::http::HttpClient;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct StatusArgs {
@@ -187,12 +188,12 @@ where
 
 #[derive(Clone)]
 pub struct MtrServer {
-    app: App,
+    app: App<HttpClient>,
 }
 
 #[tool_router]
 impl MtrServer {
-    pub fn new(app: App) -> Self {
+    pub fn new(app: App<HttpClient>) -> Self {
         Self { app }
     }
 

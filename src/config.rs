@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
 use std::time::Duration;
 
@@ -50,11 +51,22 @@ pub struct Config {
 }
 
 fn env_or(key: &str, fallback: &str) -> String {
-    env::var(key).unwrap_or_else(|_| fallback.to_string())
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = key;
+        fallback.to_string()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::var(key).unwrap_or_else(|_| fallback.to_string())
+    }
 }
 
 impl Config {
     pub fn from_env() -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let timeout_ms = 12_000u64;
+        #[cfg(not(target_arch = "wasm32"))]
         let timeout_ms = env::var("MTR_HTTP_TIMEOUT_MS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
