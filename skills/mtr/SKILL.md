@@ -149,6 +149,7 @@ For a typhoon, say a Tropical Cyclone Warning Signal is affecting service and re
 3. Present the next 2–3 trains per direction with destination, minutes away and platform. Mention the line name, not just the code.
 4. If the result says `delayed: true`, mention it and check `mtr_status`/`mtr_alerts`.
 5. A station can be served by several lines; report each separately.
+6. East Rail is included in the Next Train API and currently returns live departures. MTR has intermittently disabled the EAL feed (`NT-205 ERL line is disabled in CMS`); if that happens, report the outage and use the published first/last-train and headway information. Never invent an EAL arrival time.
 
 Direction is expressed by destination. `UP`/`DOWN` alone is not useful to a passenger.
 
@@ -225,7 +226,7 @@ mtr-hk ferry-eta hkkf 1 --direction=outbound
 ## Data freshness and limits
 
 - Service status: refreshed roughly every 3 minutes upstream (`refreshSeconds` says 180); cached about 20 seconds. It exposes both GMT and HKT timestamps.
-- Next trains / Light Rail / Bus: near real-time; do not cache in your answer beyond the current request.
+- Next trains / Light Rail / Bus: near real-time; do not cache in your answer beyond the current request. East Rail is included when MTR's feed is enabled. If the upstream returns `NT-205`, the CLI prints an explicit fallback and the MCP result carries a warning instead of pretending there are no trains.
 - Traffic notices: cached about 1 minute; `counts` breaks down active/disruption/delay/notice/record items.
 - Fares, routes, stops and facilities: static open data, refreshed every few hours.
 - Ferry routes/fares: Transport Department dataset, cached 6 hours. Live HKKF/Sun Ferry ETAs are fetched per request.

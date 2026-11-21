@@ -417,12 +417,22 @@ fn format_next(data: &Value) -> String {
             }
         }
     }
+    let eal_warning = data["warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|warning| {
+            text(&warning["line"]) == "EAL"
+                && (text(&warning["message"]).contains("NT-205")
+                    || text(&warning["message"]).contains("disabled in CMS"))
+        });
     if !shown
-        && data["lines"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|line| text(&line["line"]["code"]) == "EAL")
+        && (eal_warning
+            || data["lines"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|line| text(&line["line"]["code"]) == "EAL"))
     {
         lines.push(String::new());
         lines.push(

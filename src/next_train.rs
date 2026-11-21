@@ -74,6 +74,13 @@ fn normalize_train(network: &crate::model::Network, train: &RawTrain) -> NextTra
     }
 }
 
+fn eal_disabled(warnings: &[TrainWarning]) -> bool {
+    warnings.iter().any(|warning| {
+        warning.line == "EAL"
+            && (warning.message.contains("NT-205") || warning.message.contains("disabled in CMS"))
+    })
+}
+
 async fn fetch_line_schedule(
     app: &App<impl HttpBackend>,
     line_code: &str,
@@ -231,7 +238,11 @@ pub async fn get_next_trains(
         });
     }
 
-    if lines.is_empty() {
+    // MTR sometimes disables the East Rail feed upstream (`NT-205`). Return
+    // the warning instead of a hard error so callers can explain the fallback
+    // rather than showing nothing.
+    let eal_disabled = eal_disabled(&warnings);
+    if lines.is_empty() && !eal_disabled {
         bail!(
             "Could not retrieve next trains for {}. {}",
             station.name_en,
@@ -258,4 +269,23 @@ pub async fn get_next_trains(
         warnings,
         lines,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognises_only_the_eal_disabled_warning() {
+        let warning = |line: &str, message: &str| TrainWarning {
+            line: line.to_string(),
+            message: message.to_string(),
+        };
+        assert!(eal_disabled(&[warning(
+            "EAL",
+            "NT-205 ERL line is disabled in CMS"
+        )]));
+        assert!(!eal_disabled(&[warning("TML", "NT-205")]));
+        assert!(!eal_disabled(&[warning("EAL", "timeout")]));
+    }
 }
