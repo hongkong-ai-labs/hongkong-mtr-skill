@@ -56,10 +56,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust 1.89 with the WASM target
+      - name: Install Rust with the WASM target
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.89.0
           targets: wasm32-unknown-unknown
 
       - name: Cache worker cargo
