@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use tokio::sync::Mutex;
+use futures::lock::Mutex;
+use web_time::Instant;
 
 struct Entry<T> {
     value: Arc<T>,

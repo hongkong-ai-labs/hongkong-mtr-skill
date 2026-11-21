@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::csvutil::{parse_csv_objects, text};
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{
     Coordinates, Facility, FacilityGroup, FacilityItem, RailStation, StationFacilities, StationRef,
 };
@@ -88,8 +88,8 @@ pub fn build_facility_data(categories_csv: &str, facilities_csv: &str) -> Result
     })
 }
 
-pub async fn load_facilities(http: &HttpClient, config: &Config) -> Result<FacilityData> {
-    let (categories, facilities) = tokio::join!(
+pub async fn load_facilities(http: &impl HttpBackend, config: &Config) -> Result<FacilityData> {
+    let (categories, facilities) = futures::join!(
         http.get_text(&config.datasets.barrier_free_categories, &[]),
         http.get_text(&config.datasets.barrier_free, &[]),
     );

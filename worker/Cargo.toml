@@ -1,0 +1,24 @@
+[package]
+name = "mtr-hk-worker"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Cloudflare Workers MCP endpoint for Hong Kong MTR and ferries"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+async-trait = "0.1"
+mtr-hk-mcp = { path = "..", default-features = false }
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "0.2"
+worker = "0.8.6"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

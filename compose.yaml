@@ -6,6 +6,7 @@ services:
       - "8080:8080"
     environment:
       MTR_HTTP_ADDR: 0.0.0.0:8080
+      MTR_MCP_API_KEY: ${MTR_MCP_API_KEY:-}
     restart: unless-stopped
 
   stdio:

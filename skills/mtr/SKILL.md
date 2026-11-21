@@ -79,9 +79,9 @@ For a remote or container deployment, run:
 MTR_HTTP_ADDR=0.0.0.0:8080 mtr-hk-mcp-http
 ```
 
-and point an HTTP MCP client at `http://localhost:8080/mcp`. The endpoint supports Streamable HTTP and SSE-framed responses. It has no built-in authentication, so protect it before public exposure.
+and point an HTTP MCP client at `http://localhost:8080/mcp`. The endpoint supports Streamable HTTP and SSE-framed responses. Set an optional static key with `MTR_MCP_API_KEY` (aliases `MTR_API_KEY`, `MTR_AUTH_TOKEN`) or `--api-key`; requests then need `Authorization: Bearer <key>` or `X-API-Key: <key>`, while `/health` stays public. Without a key there is no authentication, so protect it before public exposure.
 
-The repository also contains a `Dockerfile`, `compose.yaml`, and a Cloudflare Worker + Container deployment in `cloudflare/`. See `README.md` for the container commands.
+The repository also contains a `Dockerfile`, `compose.yaml`, and a Cloudflare Worker + Container deployment in `cloudflare/`. See `README.md` for the container commands and the pure-WASM limitation.
 
 ### Install the agent skill
 

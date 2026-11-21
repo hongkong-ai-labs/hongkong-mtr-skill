@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::app::App;
 use crate::config::Config;
 use crate::constants::line_name_for_code;
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{Alert, AlertCounts, AlertSeverity, AlertsResult};
 use crate::text::{html_to_text, one_line};
 
@@ -81,8 +81,8 @@ pub struct AlertsRaw {
     pub late_certs: Vec<RawLateCert>,
 }
 
-pub async fn load_raw_alerts(http: &HttpClient, config: &Config) -> Result<AlertsRaw> {
-    let (alerts, late_certs) = tokio::join!(
+pub async fn load_raw_alerts(http: &impl HttpBackend, config: &Config) -> Result<AlertsRaw> {
+    let (alerts, late_certs) = futures::join!(
         http.get_json::<RawAlertResponse>(&config.endpoints.alerts, &[]),
         http.get_json::<RawLateCertResponse>(&config.endpoints.late_cert, &[]),
     );
@@ -155,7 +155,10 @@ impl Default for AlertOptions<'_> {
     }
 }
 
-pub async fn get_alerts(app: &App, options: AlertOptions<'_>) -> Result<AlertsResult> {
+pub async fn get_alerts(
+    app: &App<impl HttpBackend>,
+    options: AlertOptions<'_>,
+) -> Result<AlertsResult> {
     let raw = app.alerts().await?;
     let lang = if options.lang == "tc" { "tc" } else { "en" };
     let line = options.line.map(str::to_ascii_uppercase);

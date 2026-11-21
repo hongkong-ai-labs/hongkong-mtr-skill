@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::alerts::{AlertOptions, get_alerts};
 use crate::app::App;
 use crate::config::Config;
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 use crate::model::{AlertSummary, LineStatus, Network, StationRef, StatusResult, StatusSummary};
 use crate::text::html_to_text;
 
@@ -86,13 +86,13 @@ pub struct LineMeta {
 
 pub type LineConfigMap = HashMap<String, LineMeta>;
 
-pub async fn load_raw_status(http: &HttpClient, config: &Config) -> Result<RawStatus> {
+pub async fn load_raw_status(http: &impl HttpBackend, config: &Config) -> Result<RawStatus> {
     let text = http.get_text(&config.endpoints.status, &[]).await?;
     from_str(text.trim_start_matches('\u{feff}'))
         .map_err(|error| anyhow!("MTR status feed returned an unexpected document: {error}"))
 }
 
-pub async fn load_legend(http: &HttpClient, config: &Config) -> Result<LegendData> {
+pub async fn load_legend(http: &impl HttpBackend, config: &Config) -> Result<LegendData> {
     let text = http.get_text(&config.endpoints.legend, &[]).await?;
     let remarks: RawRemarks = from_str(text.trim_start_matches('\u{feff}'))
         .map_err(|error| anyhow!("MTR legend feed returned an unexpected document: {error}"))?;
@@ -108,7 +108,7 @@ pub async fn load_legend(http: &HttpClient, config: &Config) -> Result<LegendDat
     })
 }
 
-pub async fn load_line_config(http: &HttpClient, config: &Config) -> Result<LineConfigMap> {
+pub async fn load_line_config(http: &impl HttpBackend, config: &Config) -> Result<LineConfigMap> {
     let raw: RawLineConfigResponse = http.get_json(&config.endpoints.line_config, &[]).await?;
     Ok(raw
         .lines
@@ -178,8 +178,11 @@ pub fn overall_status(statuses: &[String]) -> &'static str {
     "normal"
 }
 
-pub async fn get_service_status(app: &App, line_query: Option<&str>) -> Result<StatusResult> {
-    let (raw, legend, line_config, alerts) = tokio::try_join!(
+pub async fn get_service_status(
+    app: &App<impl HttpBackend>,
+    line_query: Option<&str>,
+) -> Result<StatusResult> {
+    let (raw, legend, line_config, alerts) = futures::try_join!(
         app.status(),
         app.legend(),
         app.line_config(),
@@ -345,7 +348,10 @@ pub struct LineMetadata {
     pub stations: Vec<StationRef>,
 }
 
-pub async fn line_metadata_for_network(app: &App, network: &Network) -> Result<Vec<LineMetadata>> {
+pub async fn line_metadata_for_network(
+    app: &App<impl HttpBackend>,
+    network: &Network,
+) -> Result<Vec<LineMetadata>> {
     let config_map = app.line_config().await?;
     Ok(network
         .lines

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use crate::app::App;
 use crate::config::Config;
-use crate::http::HttpClient;
+use crate::http::HttpBackend;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FerryOperatorDef {
@@ -317,7 +317,7 @@ pub fn build_ferry_data(xml: &str) -> Result<FerryData> {
     Ok(FerryData { routes })
 }
 
-pub async fn load_ferries(http: &HttpClient, config: &Config) -> Result<FerryData> {
+pub async fn load_ferries(http: &impl HttpBackend, config: &Config) -> Result<FerryData> {
     let xml = http.get_text(&config.endpoints.ferry_routes, &[]).await?;
     build_ferry_data(&xml)
 }
@@ -357,7 +357,7 @@ fn route_matches(route: &FerryRoute, query: &str) -> bool {
 }
 
 pub async fn get_ferries(
-    app: &App,
+    app: &App<impl HttpBackend>,
     query: Option<&str>,
     operator: Option<&str>,
     include_routes: bool,
@@ -541,7 +541,7 @@ fn minutes_until_hhmm(generated: &str, value: &str) -> Option<i64> {
 }
 
 pub async fn get_ferry_eta(
-    app: &App,
+    app: &App<impl HttpBackend>,
     operator: &str,
     route_query: &str,
     direction: Option<&str>,

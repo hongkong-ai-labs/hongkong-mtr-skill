@@ -9,6 +9,8 @@ use crate::config::Config;
 use crate::facilities::{FacilityData, load_facilities};
 use crate::fares::{RailFareMatrix, load_rail_fares};
 use crate::ferries::{FerryData, load_ferries};
+use crate::http::HttpBackend;
+#[cfg(feature = "native")]
 use crate::http::HttpClient;
 use crate::light_rail::{
     LightRailData, LightRailFareMatrix, load_light_rail, load_light_rail_fares,
@@ -20,9 +22,9 @@ use crate::status::{
 };
 
 #[derive(Clone)]
-pub struct App {
+pub struct App<H: HttpBackend> {
     pub config: Arc<Config>,
-    pub http: HttpClient,
+    pub http: H,
     network: Arc<CacheCell<Network>>,
     rail_fares: Arc<CacheCell<RailFareMatrix>>,
     light_rail: Arc<CacheCell<LightRailData>>,
@@ -37,11 +39,18 @@ pub struct App {
     journeys: Arc<TtlMap>,
 }
 
-impl App {
+#[cfg(feature = "native")]
+impl App<HttpClient> {
     pub fn new() -> Result<Self> {
-        let config = Arc::new(Config::from_env());
+        let config = Config::from_env();
         let http = HttpClient::new(config.timeout, config.user_agent.clone())?;
-        Ok(Self {
+        Ok(Self::with_http(config, http))
+    }
+}
+
+impl<H: HttpBackend> App<H> {
+    pub fn with_http(config: Config, http: H) -> Self {
+        Self {
             network: Arc::new(CacheCell::new(config.cache.static_data)),
             rail_fares: Arc::new(CacheCell::new(config.cache.static_data)),
             light_rail: Arc::new(CacheCell::new(config.cache.static_data)),
@@ -54,9 +63,9 @@ impl App {
             legend: Arc::new(CacheCell::new(config.cache.static_data)),
             line_config: Arc::new(CacheCell::new(config.cache.static_data)),
             journeys: Arc::new(TtlMap::new(config.cache.journey)),
-            config,
+            config: Arc::new(config),
             http,
-        })
+        }
     }
 
     pub async fn network(&self) -> Result<Arc<Network>> {

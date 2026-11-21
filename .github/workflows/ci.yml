@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --all --locked
+
+      - name: Build release binaries
+        run: cargo build --release --locked --bins
+
+  skill:
+    name: skill package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate SKILL.md files
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+
+          files = [pathlib.Path("SKILL.md"), pathlib.Path("skills/mtr/SKILL.md")]
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+              if not text.startswith("---\n"):
+                  sys.exit(f"{path}: missing YAML frontmatter")
+              parts = text.split("---\n", 2)
+              if len(parts) != 3:
+                  sys.exit(f"{path}: frontmatter is not closed")
+              fields = {}
+              for line in parts[1].splitlines():
+                  if line.strip() and not line.lstrip().startswith("#") and ":" in line:
+                      key, value = line.split(":", 1)
+                      fields[key.strip()] = value.strip().strip('"').strip("'")
+              if fields.get("name") not in {"hongkong-mtr-skill", "mtr-hk"}:
+                  sys.exit(f"{path}: unexpected name {fields.get('name')!r}")
+              if not fields.get("description"):
+                  sys.exit(f"{path}: empty description")
+              body = parts[2].lstrip("\n").splitlines()
+              if len(body) >= 500:
+                  sys.exit(f"{path}: body has {len(body)} lines, must stay under 500")
+              print(f"{path}: ok ({len(body)} body lines)")
+          PY
+
+      - name: Validate scripts
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          sh -n scripts/install.sh
+          echo "scripts ok"
