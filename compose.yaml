@@ -1,0 +1,16 @@
+services:
+  http:
+    build: .
+    image: mtr-hk-mcp:local
+    ports:
+      - "8080:8080"
+    environment:
+      MTR_HTTP_ADDR: 0.0.0.0:8080
+    restart: unless-stopped
+
+  stdio:
+    profiles: ["stdio"]
+    build: .
+    image: mtr-hk-mcp:local
+    stdin_open: true
+    entrypoint: ["mtr-hk-mcp"]

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve symlinks so the wrapper also works when the skill is linked into
+# ~/.claude/skills/mtr rather than used from inside the repository.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+HERE="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ROOT="$(cd "$HERE/../../.." && pwd)"
+
+if command -v mtr-hk >/dev/null 2>&1; then
+  exec mtr-hk "$@"
+fi
+
+for candidate in "$ROOT/target/release/mtr-hk" "$ROOT/target/debug/mtr-hk"; do
+  if [[ -x "$candidate" ]]; then
+    exec "$candidate" "$@"
+  fi
+done
+
+echo "mtr-hk is not installed or built." >&2
+echo "Install it with: (cd \"$ROOT\" && cargo install --path .)" >&2
+echo "Or build locally with: (cd \"$ROOT\" && cargo build --release)" >&2
+exit 1
