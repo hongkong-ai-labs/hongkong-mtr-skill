@@ -1,36 +1,63 @@
 # Cloudflare deployment
 
-This directory contains a Worker front door for the Rust HTTP MCP server.
+The primary Cloudflare deployment is a **pure V8-isolate Worker**. It builds the
+Rust core to `wasm32-unknown-unknown`, uses the Workers `fetch` API for upstream
+HTTP, and serves the same 15 MCP tools as the native server.
 
-Cloudflare runs the server in a **Cloudflare Container**, not as a pure
-`wasm32-unknown-unknown` Worker. That is deliberate:
+There is no Cloudflare Container, Docker, Tokio runtime, TCP socket or stdio in
+this path. The Worker is stateless between requests apart from its in-isolate
+caches.
 
-- the server needs TCP/TLS and a persistent Tokio runtime;
-- the official Cloudflare MCP examples use the Workers JavaScript runtime;
-- rewriting the 15 tools and MTR network layer for a V8 isolate would duplicate
-  the Rust implementation and lose the shared cache.
+## Layout
 
-The Worker is still the public Cloudflare endpoint. It starts the container,
-probes `/health`, and forwards `/mcp` and `/health` to it.
+```text
+worker/
+  Cargo.toml             wasm cdylib crate
+  src/lib.rs             Workers fetch backend + JSON-RPC MCP handler
+  build.sh               builds with Rust 1.89 + worker-build
+  wrangler.jsonc         standalone config (deploy from worker/)
+wrangler.jsonc           root config (deploy from the repository root)
+cloudflare/
+  src/index.js           legacy Container front door
+  wrangler.container.jsonc  legacy Container config
+```
+
+The shared service layer lives in `src/`. Native-only code is behind the default
+`native` feature, so the Worker builds with
+`--no-default-features` and does not pull in `reqwest`, Tokio, axum, clap or
+rmcp.
+
+## Prerequisites
+
+- Rust 1.89 with the WASM target;
+- `worker-build` 0.8;
+- Node.js / `npx`;
+- a Cloudflare account and `npx wrangler login`.
+
+```bash
+rustup target add wasm32-unknown-unknown --toolchain 1.89.0
+cargo install worker-build@0.8.0
+```
+
+`worker/build.sh` prepends the Rust 1.89 toolchain when it is installed, because
+a Homebrew `rustc` can shadow `rustup` and lacks the WASM target.
 
 ## Deploy
 
-Prerequisites:
-
-- a Cloudflare account with Containers enabled;
-- Node.js and `npx`;
-- Docker (or a Docker-compatible CLI) running locally, because Wrangler builds
-  the `linux/amd64` image from the repository root `Dockerfile`;
-- `npx wrangler login`.
-
 From the repository root:
+
+```bash
+npx wrangler secret put MTR_MCP_API_KEY   # optional
+npx wrangler deploy
+```
+
+Or from `worker/`:
 
 ```bash
 npx wrangler deploy
 ```
 
-Cloudflare builds the image, pushes it to the Cloudflare registry, and deploys
-the Worker. The MCP endpoint is:
+The endpoint is:
 
 ```text
 https://<worker-name>.<account>.workers.dev/mcp
@@ -43,39 +70,70 @@ claude mcp add --transport http mtr-hk \
   https://<worker-name>.<account>.workers.dev/mcp
 ```
 
-Set a worker secret before exposing the endpoint:
+The Worker uses POST-only, stateless Streamable HTTP JSON responses. It does not
+expose legacy SSE; use the native `mtr-hk-mcp-http` binary when an SSE transport
+is required.
 
-```bash
-npx wrangler secret put MTR_MCP_API_KEY
+## Authentication
+
+When `MTR_MCP_API_KEY` is configured, `/mcp` requires either:
+
+```http
+Authorization: Bearer <key>
 ```
 
-Then configure the Worker container environment to pass `MTR_MCP_API_KEY`
-through. The endpoint requires `Authorization: Bearer <key>` or
-`X-API-Key: <key>`; `/health` stays public. Without a key the endpoint is
-unauthenticated, so also put Cloudflare Access or OAuth in front of a public
-deployment if you need per-user identity.
+or:
 
-## Local Worker check
-
-`npx wrangler dev` also needs a working Docker engine because it starts the
-container locally:
-
-```bash
-npx wrangler dev
+```http
+X-API-Key: <key>
 ```
 
-Then use `http://localhost:8787/mcp` as the MCP URL.
+`/health` stays public. Without a key the MCP endpoint is unauthenticated, so put
+Cloudflare Access or OAuth in front of a public deployment if you need per-user
+identity.
 
-## Transport
+## Local check
 
-Cloudflare's current remote MCP transport is **Streamable HTTP** at `/mcp`.
-Legacy SSE is deprecated; it is not a separate endpoint here. The Rust server's
-`/mcp` endpoint supports both JSON responses and SSE-framed responses.
+No Docker engine is required:
 
-## Pure WASM Worker status
+```bash
+npx wrangler dev --port 8787
+curl http://localhost:8787/health
+```
 
-A pure Rust Cloudflare Worker is not included. It requires replacing
-`reqwest`/rustls, Tokio's multi-thread runtime, environment-based config, and the
-stdio MCP transport with Workers-specific APIs. If a true V8-isolate Worker is a
-hard requirement, the correct next step is a separate `mtr-hk-worker` crate with
-a Worker `fetch` adapter and a rewritten HTTP backend, not this container.
+Exercise authentication with:
+
+```bash
+npx wrangler dev --port 8787 --var MTR_MCP_API_KEY:test-key
+```
+
+Then POST JSON-RPC to `http://localhost:8787/mcp`:
+
+```bash
+curl -sS http://localhost:8787/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+## Validate without deploying
+
+```bash
+npx wrangler deploy --dry-run
+```
+
+This runs the WASM build and validates the Worker bundle without uploading it.
+
+## Legacy Container fallback
+
+The previous container-backed Worker is retained for accounts that need the
+native HTTP server inside a Cloudflare Container. It requires Docker and
+Containers enabled on the account:
+
+```bash
+cd cloudflare
+npx wrangler secret put MTR_MCP_API_KEY -c wrangler.container.jsonc   # optional
+npx wrangler deploy -c wrangler.container.jsonc
+```
+
+The container config builds `../Dockerfile` for `linux/amd64`, starts the Rust
+HTTP server on port 8080, and forwards `/mcp` and `/health` through the Worker.

@@ -100,6 +100,15 @@ enum Command {
         #[arg(long, default_value = "outbound", value_parser = ["outbound", "inbound"])]
         direction: String,
     },
+    /// Update this binary using the method it was installed with.
+    Update {
+        /// Only report the current version, latest release and install method.
+        #[arg(long)]
+        check: bool,
+        /// Reinstall even when the current version is up to date.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -120,8 +129,12 @@ enum Output {
 }
 
 async fn execute(cli: Cli) -> Result<()> {
+    let command = match cli.command {
+        Command::Update { check, force } => return crate::update::run(check, force),
+        command => command,
+    };
     let app = App::new()?;
-    let (output, value) = match cli.command {
+    let (output, value) = match command {
         Command::Status { line } => (
             Output::Status,
             serde_json::to_value(crate::status::get_service_status(&app, line.as_deref()).await?)?,
@@ -224,6 +237,7 @@ async fn execute(cli: Cli) -> Result<()> {
             Output::FerryEta,
             crate::ferries::get_ferry_eta(&app, &operator, &route, Some(&direction)).await?,
         ),
+        Command::Update { .. } => unreachable!("handled above"),
     };
 
     if cli.json {

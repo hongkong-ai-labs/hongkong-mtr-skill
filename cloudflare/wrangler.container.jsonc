@@ -1,0 +1,36 @@
+{
+  // Legacy Cloudflare Container fallback. From cloudflare/: npx wrangler deploy -c wrangler.container.jsonc
+  // Wrangler builds ../Dockerfile for linux/amd64 and runs it as a Container.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "mtr-hk-mcp-container",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-21",
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "MtrContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "../Dockerfile"
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MTR_CONTAINER",
+        "class_name": "MtrContainer"
+      }
+    ]
+  },
+  "exports": {
+    "MtrContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

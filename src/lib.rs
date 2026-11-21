@@ -21,5 +21,6 @@ pub mod server;
 pub mod services;
 pub mod status;
 pub mod text;
+pub mod update;
 
 pub use app::App;

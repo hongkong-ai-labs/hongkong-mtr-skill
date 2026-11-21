@@ -14,6 +14,8 @@ Requires **Rust 1.89+** (`rustup` recommended).
 
 ```bash
 cargo install --path .
+# or directly from GitHub:
+cargo install --git https://github.com/hongkong-ai-labs/hongkong-mtr-skill --locked
 mtr-hk status
 mtr-hk ferries
 ```
@@ -51,11 +53,12 @@ As an agent skill:
 
 ```bash
 npx skills add hongkong-ai-labs/hongkong-mtr-skill
+npx skills update        # refresh the installed skill later
 ```
 
-Docker, Apple container and Cloudflare deployment are described below. A pure
-WASM Worker is not provided because the server needs TCP/TLS, a Tokio runtime
-and bundled data parsing.
+Docker, Apple container and a pure Cloudflare Workers (V8 isolate) deployment
+are described below. The native binaries keep stdio and Streamable HTTP/SSE;
+the Worker reuses the same Rust service layer through a Workers `fetch` backend.
 
 ### Register the MCP server
 
@@ -71,6 +74,19 @@ The included `.mcp.json` uses the installed binary:
   }
 }
 ```
+
+Register it with any MCP client:
+
+```bash
+npx add-mcp "$(command -v mtr-hk-mcp)" --name mtr-hk -a claude-code -a codex -a cursor -y
+claude mcp add mtr-hk -- mtr-hk-mcp
+codex mcp add mtr-hk -- mtr-hk-mcp
+```
+
+`add-mcp` detects the client configuration files in the current project; add
+`-g` for a global install. Substitute an absolute path if your client does not
+inherit the shell `PATH`.
+
 
 For Claude Code, Claude Desktop, Cursor or any stdio MCP client, use the same command. If the client does not inherit your shell `PATH`, set `command` to the absolute path, e.g. `/Users/you/.cargo/bin/mtr-hk-mcp`.
 
@@ -119,16 +135,64 @@ container run --rm -i --entrypoint mtr-hk-mcp mtr-hk-mcp
 
 The image defaults to the HTTP server on port 8080. It runs as a non-root user and includes a `/health` check.
 
-### Cloudflare Worker + Container
+### Cloudflare Workers (pure WASM)
 
-The repository includes a Cloudflare Worker front door in `cloudflare/` and a root `wrangler.jsonc`. Cloudflare runs the Rust HTTP MCP server in a Cloudflare Container and exposes it at `/mcp`:
+The root `wrangler.jsonc` deploys a true `wasm32-unknown-unknown` Worker on the
+Cloudflare V8 isolate runtime. It does not use a Container, Docker, Tokio or
+TCP; the shared service layer talks to MTR through the Workers `fetch` API and
+exposes the same 15 MCP tools at `/mcp`. Native stdio and the full
+Streamable HTTP/SSE server remain available from the binaries above.
+
+Prerequisites: Rust 1.89 with the WASM target, `worker-build`, Node.js and a
+Cloudflare account.
 
 ```bash
+rustup target add wasm32-unknown-unknown --toolchain 1.89.0
+cargo install worker-build@0.8.0
+npx wrangler login
 npx wrangler secret put MTR_MCP_API_KEY   # optional
 npx wrangler deploy
 ```
 
-Wrangler needs Docker running locally to build the `linux/amd64` image. See [`cloudflare/README.md`](cloudflare/README.md) for prerequisites, authentication warnings and the pure-WASM limitation.
+The MCP endpoint is:
+
+```text
+https://<worker-name>.<account>.workers.dev/mcp
+```
+
+```bash
+claude mcp add --transport http mtr-hk \
+  https://<worker-name>.<account>.workers.dev/mcp
+```
+
+When `MTR_MCP_API_KEY` is set, `/mcp` requires `Authorization: Bearer <key>` or
+`X-API-Key: <key>`; `/health` stays public. The Worker is stateless across
+requests except for per-isolate caches, and it accepts POST requests at `/mcp`
+(Streamable HTTP JSON responses). It intentionally has no stdio, CLI or legacy
+SSE endpoint.
+
+Run the Worker locally without Docker:
+
+```bash
+npx wrangler dev --port 8787
+curl http://localhost:8787/health
+```
+
+Use `--var MTR_MCP_API_KEY:test-key` to exercise authentication locally. See
+[`cloudflare/README.md`](cloudflare/README.md) for the Worker layout and
+operational notes.
+
+### Cloudflare Container (legacy fallback)
+
+The earlier container-backed Worker is still available for accounts that need
+the native HTTP server inside a Cloudflare Container. It requires Docker and
+Containers enabled on the account:
+
+```bash
+cd cloudflare
+npx wrangler secret put MTR_MCP_API_KEY -c wrangler.container.jsonc   # optional
+npx wrangler deploy -c wrangler.container.jsonc
+```
 
 ### Install the skill
 
@@ -207,6 +271,10 @@ Star Ferry, Fortune Ferry, Park Island, Discovery Bay, kaito and cross-boundary 
 - **Bus service status** is surfaced by `mtr_bus_next_trains`: route status code/colour/remarks, refresh time, per-stop suspension flags and `suspendedStopCount`.
 - Historical LateCert records are kept by MTR after service normalises. They are marked `record` and are **not** treated as current disruptions; the live status feed is authoritative.
 
+`mtr-hk update` detects whether the binary came from cargo, the release
+installer, a source checkout or Homebrew, and updates with that same
+method. `mtr-hk update --check` only reports.
+
 ## CLI
 
 ```bash
@@ -230,6 +298,7 @@ mtr-hk ferries "Cheung Chau"
 mtr-hk ferries --operator=sun-ferry
 mtr-hk ferry-eta sun-ferry CECC
 mtr-hk ferry-eta hkkf 1
+mtr-hk update --check
 ```
 
 Add `--json` for structured output. From the skill, use the wrapper:
@@ -297,7 +366,7 @@ src/
   constants.rs           stable MTR line metadata
   model.rs               normalized domain types
   app.rs                 shared app object and TTL caches
-  http.rs                reqwest client, timeout, retry, JSON
+  http.rs                HTTP backend trait + native reqwest client
   cache.rs               typed TTL cache and de-duplication
   csvutil.rs             RFC-4180 CSV helpers
   text.rs                alert HTML -> readable text
@@ -317,11 +386,15 @@ src/
   bin/mtr-hk-mcp.rs      MCP stdio entry point
   bin/mtr-hk-mcp-http.rs MCP Streamable HTTP/SSE entry point
   bin/mtr-hk.rs          CLI entry point
-src/lib.rs               library root
+src/lib.rs               library root (native modules feature-gated)
+worker/                  pure Workers WASM crate + MCP JSON-RPC handler
+worker/build.sh          WASM build pinned to Rust 1.89
+wrangler.jsonc           pure Cloudflare Workers config
 Dockerfile               OCI image for CLI + stdio + HTTP MCP
 compose.yaml             local HTTP and stdio container profiles
-wrangler.jsonc           Cloudflare Worker + Container config
-cloudflare/src/          Worker front door and container lifecycle
+cloudflare/src/          legacy Container front door and lifecycle
+cloudflare/README.md     Worker deployment notes
+cloudflare/wrangler.container.jsonc  legacy Container config
 skills/mtr/
   SKILL.md               agent instructions
   references/            API and CLI documentation
@@ -337,7 +410,8 @@ Caching: static datasets 6 hours, status 20 seconds, alerts 60 seconds, journey 
 ## Releasing
 
 CI runs formatting, clippy with warnings as errors, tests, a release build of all
-three binaries, and validates both `SKILL.md` files plus the shell scripts.
+three binaries, a `wasm32-unknown-unknown` check of `worker/`, and validates both
+`SKILL.md` files plus the shell scripts.
 Dependabot proposes weekly Cargo and GitHub Actions updates, and the audit
 workflow checks the lockfile against the RustSec advisory database.
 
@@ -353,12 +427,19 @@ a `cargo build --release --locked --bins` fallback.
 ```bash
 just                 # fmt check, clippy with -D warnings, tests
 just skill-check     # validate both SKILL.md files and shell syntax
+just worker-check    # type-check the pure-WASM Worker
 cargo build --release --locked --bins
 scripts/smoke.sh
 python3 scripts/mcp_smoke.py
 MTR_HTTP_ADDR=127.0.0.1:8080 ./target/release/mtr-hk-mcp-http &
 python3 scripts/mcp_http_smoke.py
 ```
+
+`rust-toolchain.toml` pins the stable toolchain with `rustfmt` and
+`clippy`, so `rustup` sets contributors up automatically. `just doc`
+builds the API documentation. See `CONTRIBUTING.md` for the full check
+list and the signed-commit requirement.
+
 
 `cargo test` is offline and covers CSV/HTML/network canonicalization/fares/routes/journey legs/status severity/ferry classification. The smoke scripts need network access.
 
@@ -374,7 +455,7 @@ python3 scripts/mcp_http_smoke.py
 - **Ferry live ETA is limited to HKKF and Sun Ferry.** Other operators expose timetables or booking pages, not a public ETA API.
 - **Ferry full fares** are the published adult single fare from TD; concessions, monthly passes and resident fares are not exhaustive.
 - **Kaito/water-taxi/cross-boundary** services can be seasonal, bookable or subject to immigration/terminal rules.
-- **Cloudflare deployment is container-backed, not pure WASM.** Wrangler needs Docker locally to build the image, and Cloudflare Containers must be enabled on the account. A V8-isolate-only Worker would require a separate rewritten HTTP/tool layer.
+- **Cloudflare Workers is stateless and POST-only.** The pure V8-isolate Worker exposes the 15 tools over Streamable HTTP JSON at `/mcp`; use the native HTTP binary for legacy SSE. Per-isolate caches are not shared across Cloudflare instances.
 - **Remote authentication is a single static API key.** Set `MTR_MCP_API_KEY` to protect `/mcp`; put Cloudflare Access or OAuth in front of a public deployment if you need per-user identity.
 - **Traditional/Simplified Chinese** matching is exact for Chinese names; use `mtr_stations` if a name variant is not found.
 

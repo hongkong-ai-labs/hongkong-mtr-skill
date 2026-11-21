@@ -44,8 +44,35 @@ jobs:
       - name: Test
         run: cargo test --all --locked
 
+      - name: Doc
+        run: cargo doc --no-deps --locked
+
       - name: Build release binaries
         run: cargo build --release --locked --bins
+
+  worker:
+    name: wasm worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust with the WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache worker cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-worker-${{ hashFiles('worker/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-worker-
+
+      - name: Type-check the pure-WASM Worker
+        run: cargo check --manifest-path worker/Cargo.toml --target wasm32-unknown-unknown --locked
 
   skill:
     name: skill package

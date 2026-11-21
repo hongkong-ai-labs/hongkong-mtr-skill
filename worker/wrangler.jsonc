@@ -2,12 +2,12 @@
   // Run from this directory: npx wrangler deploy
   // Requires worker-build on PATH: cargo install worker-build@0.8.0
   "name": "mtr-hk-mcp-worker",
-  "main": "src/lib.rs",
-  "compatibility_date": "2026-11-22",
+  "main": "build/worker/shim.mjs",
+  "compatibility_date": "2026-11-21",
   "observability": {
     "enabled": true
   },
   "build": {
-    "command": "worker-build --release"
+    "command": "bash build.sh"
   }
 }

@@ -86,9 +86,11 @@ requests then need `Authorization: Bearer <key>` or `X-API-Key: <key>`, while
 `/health` stays public. Without a key there is no authentication, so do not
 expose it directly to the public internet.
 
-The repository also contains a `Dockerfile`, `compose.yaml`, and a Cloudflare
-Worker + Container deployment in `cloudflare/`. See `README.md` for container
-commands and the pure-WASM limitation.
+The repository also contains a `Dockerfile`, `compose.yaml`, and a pure
+Cloudflare Workers (V8 isolate) deployment rooted at `wrangler.jsonc` with the
+Rust Worker in `worker/`. The Worker exposes the same 15 tools at `/mcp`; see
+`README.md` and `cloudflare/README.md` for deployment and authentication
+details.
 
 ### Install the agent skill
 
@@ -111,6 +113,7 @@ mtr-hk next "Tsim Sha Tsui" --line=TWL
 mtr-hk journey Admiralty "Tung Chung"
 mtr-hk ferries "Cheung Chau"
 skills/mtr/scripts/mtr status
+mtr-hk update --check
 ```
 
 Add `--json` to any command for raw structured output. The wrapper looks for `mtr-hk` on `PATH`, then `target/release/mtr-hk`, then `target/debug/mtr-hk`.
@@ -257,3 +260,27 @@ mtr-hk ferry-eta hkkf 1 --direction=outbound
 
 - `references/api-notes.md` — endpoints, parameters, response shapes, ferry sources and limitations.
 - `references/cli.md` — full CLI reference and examples.
+
+### Install the binary directly
+
+`npx skills add` installs the skill files. If the binary is missing, install it
+with the release installer or cargo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hongkong-ai-labs/hongkong-mtr-skill/main/scripts/install.sh | sh
+# or
+cargo install --git https://github.com/hongkong-ai-labs/hongkong-mtr-skill --locked
+```
+
+Register it with any MCP client:
+
+```bash
+npx add-mcp "$(command -v mtr-hk-mcp)" --name mtr-hk -a claude-code -a codex -a cursor -y
+claude mcp add mtr-hk -- mtr-hk-mcp
+codex mcp add mtr-hk -- mtr-hk-mcp
+```
+
+`add-mcp` detects the client configuration files in the current project; add
+`-g` for a global install. `$(command -v mtr-hk-mcp)` keeps the entry correct
+when the binary is on `PATH`; substitute an absolute path if your client does
+not inherit the shell `PATH`.
