@@ -43,6 +43,10 @@ run *ARGS:
 install:
     cargo install --path . --locked --force
 
+# Type-check the pure-WASM Cloudflare Worker.
+worker-check:
+    rustup run 1.89.0 cargo check --manifest-path worker/Cargo.toml --target wasm32-unknown-unknown --locked
+
 # Build the container and print CLI help.
 container:
     docker build -t mtr-hk:local .

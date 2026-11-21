@@ -1,36 +1,15 @@
 {
+  // Pure Cloudflare Workers (V8 isolate) MCP endpoint.
   // Deploy from the repository root with: npx wrangler deploy
-  // Wrangler builds ./Dockerfile for linux/amd64 and runs it as a Container.
+  // The legacy Container fallback is in cloudflare/wrangler.container.jsonc.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mtr-hk-mcp",
-  "main": "cloudflare/src/index.js",
-  "compatibility_date": "2026-11-22",
+  "main": "worker/build/worker/shim.mjs",
+  "compatibility_date": "2026-11-21",
   "observability": {
     "enabled": true
   },
-  "containers": [
-    {
-      "class_name": "MtrContainer",
-      "scheduling_policy": "durable_object",
-      "images": {
-        "base": {
-          "dockerfile": "./Dockerfile"
-        }
-      }
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "MTR_CONTAINER",
-        "class_name": "MtrContainer"
-      }
-    ]
-  },
-  "exports": {
-    "MtrContainer": {
-      "type": "durable-object",
-      "storage": "sqlite"
-    }
+  "build": {
+    "command": "bash worker/build.sh"
   }
 }
