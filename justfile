@@ -45,7 +45,7 @@ install:
 
 # Type-check the pure-WASM Cloudflare Worker.
 worker-check:
-    rustup run 1.89.0 cargo check --manifest-path worker/Cargo.toml --target wasm32-unknown-unknown --locked
+    RUSTC=$(rustup which --toolchain 1.89.0 rustc) rustup run 1.89.0 cargo check --manifest-path worker/Cargo.toml --target wasm32-unknown-unknown --locked
 
 # Build the container and print CLI help.
 container:
@@ -93,4 +93,9 @@ clean:
     cargo clean
 
 # Run the checks and a release build.
-ci: check build-release
+ci: check doc build-release
+
+# Build the API documentation.
+doc:
+    cargo doc --no-deps --locked
+

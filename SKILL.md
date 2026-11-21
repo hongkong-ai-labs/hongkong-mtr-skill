@@ -260,3 +260,27 @@ mtr-hk ferry-eta hkkf 1 --direction=outbound
 
 - `references/api-notes.md` — endpoints, parameters, response shapes, ferry sources and limitations.
 - `references/cli.md` — full CLI reference and examples.
+
+### Install the binary directly
+
+`npx skills add` installs the skill files. If the binary is missing, install it
+with the release installer or cargo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hongkong-ai-labs/hongkong-mtr-skill/main/scripts/install.sh | sh
+# or
+cargo install --git https://github.com/hongkong-ai-labs/hongkong-mtr-skill --locked
+```
+
+Register it with any MCP client:
+
+```bash
+npx add-mcp "$(command -v mtr-hk-mcp)" --name mtr-hk -a claude-code -a codex -a cursor -y
+claude mcp add mtr-hk -- mtr-hk-mcp
+codex mcp add mtr-hk -- mtr-hk-mcp
+```
+
+`add-mcp` detects the client configuration files in the current project; add
+`-g` for a global install. `$(command -v mtr-hk-mcp)` keeps the entry correct
+when the binary is on `PATH`; substitute an absolute path if your client does
+not inherit the shell `PATH`.
