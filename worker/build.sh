@@ -6,7 +6,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 # Homebrew's rustc can shadow rustup and lacks the wasm target. Pin the
 # toolchain used for the Worker build when Rust 1.89 is installed.
-if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q '^1\.89\.0'; then
+if command -v rustup >/dev/null 2>&1 && rustup run 1.89.0 rustc --version >/dev/null 2>&1; then
   export RUSTUP_TOOLCHAIN=1.89.0
   export PATH="$(dirname "$(rustup which rustc)"):$PATH"
 fi
