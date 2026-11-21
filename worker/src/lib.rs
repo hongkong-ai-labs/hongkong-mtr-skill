@@ -7,9 +7,8 @@ use mtr_hk::http::{HttpBackend, HttpError};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use worker::{
-    Context, Env, Fetch, Headers, Method, Request, RequestInit, Response, Result, wasm_bindgen::JsValue,
-};
+use wasm_bindgen::JsValue;
+use worker::{Context, Env, Fetch, Headers, Method, Request, RequestInit, Response, Result};
 
 const SERVER_NAME: &str = "mtr-hk";
 const SERVER_VERSION: &str = "1.0.0";
@@ -42,6 +41,32 @@ impl WorkerHttpClient {
         method: Method,
         url: &str,
         headers: &[(&str, &str)],
+        body: Option<&str>,
+    ) -> Result<String, HttpError> {
+        // Workers fetch uses wasm-bindgen JsFuture, which is intentionally
+        // !Send. Run it on the isolate's local executor and hand the result
+        // back through a Send channel so the shared HTTP trait stays Send.
+        let url = url.to_string();
+        let headers: Vec<(String, String)> = headers
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect();
+        let body = body.map(str::to_string);
+        let error_url = url.clone();
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = Self::request_inner(method, &url, &headers, body.as_deref()).await;
+            let _ = sender.send(result);
+        });
+        receiver
+            .await
+            .map_err(|error| request_error(error_url.as_str(), error))?
+    }
+
+    async fn request_inner(
+        method: Method,
+        url: &str,
+        headers: &[(String, String)],
         body: Option<&str>,
     ) -> Result<String, HttpError> {
         let request_headers = Headers::new();
@@ -375,7 +400,8 @@ async fn call_tool(name: &str, arguments: Value) -> Result<Value, String> {
                 .map_err(|e| e.to_string())
         }
         "mtr_stations" => {
-            let args: StationsArgs = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+            let args: StationsArgs =
+                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             mtr_hk::services::search_stations(app, &args.query, args.limit.unwrap_or(8))
                 .await
                 .map_err(|e| e.to_string())
@@ -400,7 +426,8 @@ async fn call_tool(name: &str, arguments: Value) -> Result<Value, String> {
                 .map_err(|e| e.to_string())
         }
         "mtr_light_rail_routes" => {
-            let args: LrRoutesArgs = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+            let args: LrRoutesArgs =
+                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             mtr_hk::services::get_light_rail_routes(app, args.query.as_deref())
                 .await
                 .map_err(|e| e.to_string())
@@ -418,7 +445,8 @@ async fn call_tool(name: &str, arguments: Value) -> Result<Value, String> {
                 .map_err(|e| e.to_string())
         }
         "mtr_bus_routes" => {
-            let args: BusRoutesArgs = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+            let args: BusRoutesArgs =
+                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             mtr_hk::services::get_bus_routes(app, args.query.as_deref(), args.stop.as_deref())
                 .await
                 .map_err(|e| e.to_string())
@@ -435,7 +463,8 @@ async fn call_tool(name: &str, arguments: Value) -> Result<Value, String> {
             .map_err(|e| e.to_string())
         }
         "mtr_ferry_eta" => {
-            let args: FerryEtaArgs = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+            let args: FerryEtaArgs =
+                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             mtr_hk::ferries::get_ferry_eta(
                 app,
                 &args.operator,
@@ -453,7 +482,10 @@ async fn call_tool(name: &str, arguments: Value) -> Result<Value, String> {
 fn cors(mut response: Response) -> Result<Response> {
     let headers = response.headers_mut();
     headers.set("Access-Control-Allow-Origin", "*")?;
-    headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, Mcp-Session-Id")?;
+    headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-API-Key, Mcp-Session-Id",
+    )?;
     headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
     headers.set("Access-Control-Expose-Headers", "Mcp-Session-Id")?;
     Ok(response)
@@ -461,11 +493,6 @@ fn cors(mut response: Response) -> Result<Response> {
 
 fn json_response(value: &Value) -> Result<Response> {
     cors(Response::from_json(value)?)
-}
-
-fn rpc_result(id: Value, result: Value) -> Response {
-    json_response(&json!({ "jsonrpc": "2.0", "id": id, "result": result }))
-        .unwrap_or_else(|_| Response::error("serialization failed", 500).unwrap())
 }
 
 fn rpc_error(id: Value, code: i64, message: &str) -> Response {
@@ -526,20 +553,33 @@ async fn handle_rpc(req: Request) -> Result<Response> {
     let mut req = req;
     let payload: Value = match req.json().await {
         Ok(payload) => payload,
-        Err(error) => return rpc_error(Value::Null, -32700, &format!("Parse error: {error}")),
+        Err(error) => {
+            return Ok(rpc_error(
+                Value::Null,
+                -32700,
+                &format!("Parse error: {error}"),
+            ));
+        }
     };
 
     // JSON-RPC batch support.
     if let Some(batch) = payload.as_array() {
         let mut responses = Vec::with_capacity(batch.len());
         for item in batch {
-            responses.push(handle_one(item.clone()).await);
+            let response = handle_one(item.clone()).await;
+            if !response.is_null() {
+                responses.push(response);
+            }
         }
         return json_response(&Value::Array(responses));
     }
 
     let response = handle_one(payload).await;
-    Ok(rpc_result(Value::Null, response))
+    if response.is_null() {
+        cors(Response::empty()?.with_status(202))
+    } else {
+        json_response(&response)
+    }
 }
 
 async fn handle_one(payload: Value) -> Value {
@@ -548,7 +588,7 @@ async fn handle_one(payload: Value) -> Value {
     let params = payload.get("params").cloned().unwrap_or_else(|| json!({}));
 
     if method.starts_with("notifications/") {
-        return json!({});
+        return Value::Null;
     }
 
     match method {
@@ -603,7 +643,7 @@ async fn handle_one(payload: Value) -> Value {
 }
 
 #[worker::event(fetch)]
-async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = req.path();
 
     if req.method() == Method::Options {
@@ -628,10 +668,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
 
     if !authorized(&req, &env) {
-        return cors(
-            Response::error("unauthorized", 401)?
-                .with_headers(Headers::new()),
-        );
+        return cors(Response::error("unauthorized", 401)?);
     }
 
     // handle_rpc consumes the body; notifications still return an empty 202.

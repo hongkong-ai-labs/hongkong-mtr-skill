@@ -230,6 +230,7 @@ mtr-hk ferries "Cheung Chau"
 mtr-hk ferries --operator=sun-ferry
 mtr-hk ferry-eta sun-ferry CECC
 mtr-hk ferry-eta hkkf 1
+mtr-hk update --check
 ```
 
 Add `--json` for structured output. From the skill, use the wrapper:
