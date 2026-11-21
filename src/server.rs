@@ -4,6 +4,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::Router;
+use axum::extract::{Request, State};
+use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ErrorData};
@@ -580,6 +584,63 @@ async fn health() -> axum::Json<Value> {
     }))
 }
 
+#[derive(Clone)]
+struct AuthConfig {
+    key: Option<String>,
+}
+
+async fn require_api_key(
+    State(config): State<AuthConfig>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(expected) = config.key.as_deref() else {
+        return next.run(request).await;
+    };
+    if request.method() == axum::http::Method::OPTIONS {
+        return next.run(request).await;
+    }
+    let authorized = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()))
+        || request
+            .headers()
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()));
+    if authorized {
+        next.run(request).await
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            [(header::WWW_AUTHENTICATE, "Bearer")],
+            "unauthorized",
+        )
+            .into_response()
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut difference = 0u8;
+    for (left, right) in left.iter().zip(right) {
+        difference |= left ^ right;
+    }
+    difference == 0
+}
+
+fn configured_api_key() -> Option<String> {
+    ["MTR_MCP_API_KEY", "MTR_API_KEY", "MTR_AUTH_TOKEN"]
+        .into_iter()
+        .find_map(|name| std::env::var(name).ok())
+        .filter(|value| !value.trim().is_empty())
+}
+
 /// Serve MCP over the Streamable HTTP transport. The same endpoint accepts
 /// JSON responses and server-sent event streams, so remote clients that use
 /// either HTTP or SSE framing can connect.
@@ -591,9 +652,18 @@ pub async fn run_http(addr: SocketAddr) -> Result<()> {
         StreamableHttpServerConfig::default(),
     );
 
+    let auth = AuthConfig {
+        key: configured_api_key(),
+    };
+    if auth.key.is_some() {
+        eprintln!("mtr-hk MCP: API-key authentication enabled");
+    }
+    let protected = Router::new()
+        .nest_service("/mcp", service)
+        .layer(middleware::from_fn_with_state(auth, require_api_key));
     let router = Router::new()
         .route("/health", get(health))
-        .nest_service("/mcp", service)
+        .merge(protected)
         .layer(CorsLayer::permissive());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -611,4 +681,17 @@ pub async fn run_http_from_env() -> Result<()> {
         .parse::<SocketAddr>()
         .map_err(|error| anyhow::anyhow!("invalid MTR_HTTP_ADDR {raw:?}: {error}"))?;
     run_http(addr).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_eq;
+
+    #[test]
+    fn compares_api_keys_without_early_exit() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"secreT"));
+        assert!(!constant_time_eq(b"secret", b"secret-longer"));
+        assert!(!constant_time_eq(b"", b"secret"));
+    }
 }
