@@ -15,7 +15,7 @@ The server and CLI are Rust binaries. Node/npm are **not** required.
 
 Prerequisites:
 
-- Rust 1.88 or newer, including `cargo` (`rustup` is the easiest install: <https://rustup.rs>).
+- Rust 1.89 or newer, including `cargo` (`rustup` is the easiest install: <https://rustup.rs>).
 - `~/.cargo/bin` on `PATH` (the Rust installer normally adds it).
 
 From the repository root:

@@ -4,7 +4,7 @@ The `mtr-hk` CLI shares the same Rust service layer as the MCP server.
 
 ## Install
 
-Requires Rust 1.88+.
+Requires Rust 1.89+.
 
 ```bash
 cargo install --path .
