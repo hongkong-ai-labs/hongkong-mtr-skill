@@ -25,6 +25,22 @@ updates:
         update-types:
           - minor
 
+  - package-ecosystem: cargo
+    directory: "/worker"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Hong_Kong
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(worker)"
+      include: scope
+    labels:
+      - dependencies
+      - rust
+      - cloudflare
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

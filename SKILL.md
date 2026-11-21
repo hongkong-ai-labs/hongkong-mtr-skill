@@ -86,9 +86,11 @@ requests then need `Authorization: Bearer <key>` or `X-API-Key: <key>`, while
 `/health` stays public. Without a key there is no authentication, so do not
 expose it directly to the public internet.
 
-The repository also contains a `Dockerfile`, `compose.yaml`, and a Cloudflare
-Worker + Container deployment in `cloudflare/`. See `README.md` for container
-commands and the pure-WASM limitation.
+The repository also contains a `Dockerfile`, `compose.yaml`, and a pure
+Cloudflare Workers (V8 isolate) deployment rooted at `wrangler.jsonc` with the
+Rust Worker in `worker/`. The Worker exposes the same 15 tools at `/mcp`; see
+`README.md` and `cloudflare/README.md` for deployment and authentication
+details.
 
 ### Install the agent skill
 
